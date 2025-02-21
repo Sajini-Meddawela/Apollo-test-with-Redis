@@ -1,10 +1,15 @@
-import { Redis } from "ioredis";
-import { PubSub } from "graphql-subscriptions";
+import { RedisPubSub } from "graphql-redis-subscriptions";
+import Redis from "ioredis";
 
 // Create separate Redis clients for publishing and subscribing
 export const subscriberClient = new Redis(process.env.REDIS_URL || "redis://localhost:6379");
 export const publisherClient = new Redis(process.env.REDIS_URL || "redis://localhost:6379");
-export const pubsub = new PubSub();
+
+// Use RedisPubSub for subscriptions
+export const pubsub = new RedisPubSub({
+  publisher: publisherClient,
+  subscriber: subscriberClient,
+});
 
 // Constants
 export const AGENT_UPDATES = "AGENT_UPDATES";
@@ -19,28 +24,8 @@ export interface AgentStats {
 
 // Function to publish stats
 export const publishAgentStats = (stats: AgentStats) => {
-  publisherClient.publish(AGENT_UPDATES, JSON.stringify(stats));
+  pubsub.publish(AGENT_UPDATES, { agentUpdated: stats });
 };
-
-// Subscribe to Redis for real-time updates
-subscriberClient.subscribe(AGENT_UPDATES, (err) => {
-  if (err) {
-    console.error("Error subscribing to Redis channel:", err);
-    return;
-  }
-  console.log("✅ Successfully subscribed to Redis channel:", AGENT_UPDATES);
-});
-
-subscriberClient.on("message", (channel, message) => {
-  if (channel === AGENT_UPDATES) {
-    try {
-      const parsedMessage = JSON.parse(message);
-      pubsub.publish(AGENT_UPDATES, { agentUpdated: parsedMessage });
-    } catch (error) {
-      console.error("Error parsing message:", error);
-    }
-  }
-});
 
 // Handle Redis connection errors
 subscriberClient.on("error", (error) => {
